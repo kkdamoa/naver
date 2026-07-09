@@ -1,0 +1,7 @@
+title: My Auto Blog
+description: 네이버 지식인 키워드 기반 자동 생성 블로그
+theme: minima
+plugins:
+  - jekyll-feed
+
+# GitHub Pages에서 자동 배포됨 (별도 설정 불필요)
