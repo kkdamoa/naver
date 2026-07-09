@@ -1,7 +1,17 @@
 title: My Auto Blog
-description: 네이버 지식인 키워드 기반 자동 생성 블로그
+description: 생활 정보와 실용 팁을 정리하는 블로그
+url: "" # 예: https://본인아이디.github.io
+baseurl: "" # 예: /저장소이름 (커스텀 도메인이면 빈 값으로)
+author: Auto Blog
+lang: ko_KR
+logo: # 예: /assets/logo.png (선택)
+
 theme: minima
 plugins:
   - jekyll-feed
+  - jekyll-seo-tag
+  - jekyll-sitemap
 
+# jekyll-seo-tag / jekyll-sitemap 은 meta description, Open Graph 태그,
+# sitemap.xml, robots.txt 관련 신호를 자동으로 생성해줍니다.
 # GitHub Pages에서 자동 배포됨 (별도 설정 불필요)

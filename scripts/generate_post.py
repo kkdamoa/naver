@@ -77,6 +77,7 @@ def search_naver_kin(keyword, display=10):
         questions.append({
             "title": strip_html(item.get("title", "")),
             "description": strip_html(item.get("description", "")),
+            "link": item.get("link", ""),
         })
     return questions
 
@@ -89,15 +90,20 @@ def build_prompt(keyword, questions):
 
 {q_list}
 
-위 질문들에서 드러나는 공통 궁금증을 바탕으로, 블로그에 올릴 새로운 글을 한국어로 작성해줘.
-조건:
-- 특정 질문을 그대로 옮기지 말고, 주제를 종합해서 완전히 새로 작성
-- 실용적이고 구체적인 정보 포함
-- 제목은 검색에 잘 걸리도록 명확하게
+위 질문들 중 가장 구체적이고 반복적으로 나오는 궁금증 하나를 골라서, 그 질문에 실제로 "직접 답하는" 글을 한국어로 작성해줘.
+
+중요한 조건:
+- 여러 질문을 뭉뚱그려 요약하지 말고, 하나의 구체적인 질문/상황에 초점을 맞춰서 답할 것
+- "통곡물을 먹어라", "물을 많이 마셔라" 같은 인터넷에 이미 흔한 일반론은 피하고,
+  가능한 한 구체적인 수치, 순서, 체크리스트, 예시 등 실질적인 정보를 담을 것
+- 첫 문단에서 핵심 답을 바로 제시하고, 이후 근거/구체적 방법을 설명하는 구조로 작성 (검색 의도에 바로 답하는 방식)
+- 의학/건강/법률처럼 잘못된 정보가 위험할 수 있는 주제라면, 확정적인 조언 대신
+  "일반적으로 알려진 정보"라는 톤을 유지하고 전문가 상담을 권하는 문장을 자연스럽게 포함할 것
+- 제목은 검색 의도가 명확히 드러나도록 구체적으로 작성
 - 마크다운 형식, 소제목(##) 활용
 - 분량은 800~1200자 내외
-- 결과는 아래 JSON 형식으로만 응답 (다른 텍스트 없이):
-{{"title": "글 제목", "body": "마크다운 본문"}}
+- 결과는 아래 JSON 형식으로만 응답 (다른 텍스트 없이, 코드블록 없이):
+{{"title": "글 제목", "description": "검색결과에 노출될 120자 내외 요약 (meta description용)", "body": "마크다운 본문", "focus_question": "이 글이 실제로 답하는 원 질문 제목 (위 목록 중 하나를 정확히 그대로)"}}
 """
     return prompt
 
@@ -125,7 +131,7 @@ def generate_article(keyword, questions):
     # 코드블록 마크다운(```json ... ```) 제거
     text = re.sub(r"^```json\s*|\s*```$", "", text.strip())
     parsed = json.loads(text)
-    return parsed["title"], parsed["body"]
+    return parsed["title"], parsed.get("description", ""), parsed["body"], parsed.get("focus_question", "")
 
 
 def slugify(title):
@@ -133,24 +139,50 @@ def slugify(title):
     return slug[:60] if slug else "post"
 
 
-def save_jekyll_post(title, body, keyword):
+def save_jekyll_post(title, description, body, keyword, questions, focus_question):
     today = datetime.date.today()
     slug = slugify(title)
     filename = f"{today.isoformat()}-{slug}.md"
     filepath = os.path.join(POSTS_DIR, filename)
 
+    safe_description = (description or "").replace('"', "'").replace("\n", " ")
     front_matter = f"""---
 layout: post
 title: "{title.replace('"', "'")}"
+description: "{safe_description}"
 date: {today.isoformat()} 09:00:00 +0900
 categories: [auto]
 tags: [{keyword}]
 ---
 
 """
+
+    # 참고한 지식인 질문 링크 정리 (직접 답변 달 때 이 링크로 이동해서 답변 등록)
+    focus_link = None
+    other_links = []
+    for q in questions:
+        if not q.get("link"):
+            continue
+        if focus_question and q["title"] == focus_question:
+            focus_link = q
+        else:
+            other_links.append(q)
+
+    ref_section = "\n\n---\n\n## 참고한 지식인 질문\n\n"
+    if focus_link:
+        ref_section += f"- **[이 글이 답하는 질문] [{focus_link['title']}]({focus_link['link']})**\n"
+    if other_links:
+        ref_section += "\n함께 참고한 관련 질문들:\n"
+        for q in other_links:
+            ref_section += f"- [{q['title']}]({q['link']})\n"
+    ref_section += (
+        "\n> 위 링크로 이동해서 이 글 주소를 답변에 남기면 됩니다. "
+        "네이버 지식인에는 직접 수동으로 답변을 등록해야 하며 자동 등록은 지원하지 않습니다.\n"
+    )
+
     os.makedirs(POSTS_DIR, exist_ok=True)
     with open(filepath, "w", encoding="utf-8") as f:
-        f.write(front_matter + body)
+        f.write(front_matter + body + ref_section)
     print(f"생성됨: {filepath}")
     return filepath
 
@@ -177,8 +209,8 @@ def main():
         print("검색 결과가 없습니다.")
         return
 
-    title, body = generate_article(keyword, questions)
-    save_jekyll_post(title, body, keyword)
+    title, description, body, focus_question = generate_article(keyword, questions)
+    save_jekyll_post(title, description, body, keyword, questions, focus_question)
 
     used.add(keyword)
     save_used_keywords(used)
